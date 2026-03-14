@@ -7,6 +7,8 @@ import {
   createCompanySchema,
   updateCompanySchema,
 } from "@paperclipai/shared";
+import { agents } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
 import { forbidden } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 import { accessService, companyPortabilityService, companyService, logActivity } from "../services/index.js";
@@ -164,6 +166,47 @@ export function companyRoutes(db: Db) {
       entityId: companyId,
     });
     res.json(company);
+  });
+
+  router.post("/:companyId/pause-all-agents", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+
+    const autoResumeAfter: string | undefined = req.body?.autoResumeAfter;
+
+    const rows = await db
+      .select({ id: agents.id, status: agents.status, runtimeConfig: agents.runtimeConfig })
+      .from(agents)
+      .where(eq(agents.companyId, companyId));
+
+    const pauseable = rows.filter(
+      (a) => !["terminated", "pending_approval", "paused"].includes(a.status ?? ""),
+    );
+
+    for (const agent of pauseable) {
+      const runtimeConfig = (agent.runtimeConfig ?? {}) as Record<string, unknown>;
+      const patch: Record<string, unknown> = { status: "paused", updatedAt: new Date() };
+      if (autoResumeAfter) {
+        patch.runtimeConfig = {
+          ...runtimeConfig,
+          _autoPause: { reason: "manual", resumeAfter: autoResumeAfter, pausedAt: new Date().toISOString() },
+        };
+      }
+      await db.update(agents).set(patch as any).where(eq(agents.id, agent.id));
+    }
+
+    await logActivity(db, {
+      companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "company.paused_all_agents",
+      entityType: "company",
+      entityId: companyId,
+      details: { paused: pauseable.length, autoResumeAfter },
+    });
+
+    res.json({ paused: pauseable.length });
   });
 
   router.delete("/:companyId", async (req, res) => {

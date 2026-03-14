@@ -6,7 +6,7 @@ import { companiesApi } from "../api/companies";
 import { accessApi } from "../api/access";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check } from "lucide-react";
+import { Settings, Check, PauseCircle } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -75,6 +75,13 @@ export function CompanySettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     }
+  });
+
+  const pauseAllMutation = useMutation({
+    mutationFn: () => companiesApi.pauseAllAgents(selectedCompanyId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+    },
   });
 
   const settingsMutation = useMutation({
@@ -241,6 +248,52 @@ export function CompanySettings() {
               />
             </div>
           </Field>
+        </div>
+      </div>
+
+      {/* Operations */}
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Operations
+        </div>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-0.5">
+              <span className="text-sm font-medium">Pause all agents</span>
+              <p className="text-xs text-muted-foreground">
+                Pauses all active and idle agents. They will continue from where they left off when resumed.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 gap-1.5 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={pauseAllMutation.isPending}
+              onClick={() => {
+                if (!selectedCompanyId) return;
+                const confirmed = window.confirm(
+                  `Pause all agents for "${selectedCompany.name}"? They can be resumed individually later.`
+                );
+                if (!confirmed) return;
+                pauseAllMutation.mutate();
+              }}
+            >
+              <PauseCircle className="h-3.5 w-3.5" />
+              {pauseAllMutation.isPending ? "Pausing..." : "Pause All Agents"}
+            </Button>
+          </div>
+          {pauseAllMutation.isSuccess && (
+            <p className="text-xs text-muted-foreground">
+              {(pauseAllMutation.data as { paused: number })?.paused ?? 0} agent(s) paused.
+            </p>
+          )}
+          {pauseAllMutation.isError && (
+            <p className="text-xs text-destructive">
+              {pauseAllMutation.error instanceof Error
+                ? pauseAllMutation.error.message
+                : "Failed to pause agents"}
+            </p>
+          )}
         </div>
       </div>
 

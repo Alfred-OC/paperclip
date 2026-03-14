@@ -15,6 +15,7 @@ import {
   reconcilePendingMigrationHistory,
   formatDatabaseBackupResult,
   runDatabaseBackup,
+  agents,
   authUsers,
   companies,
   companyMemberships,
@@ -542,6 +543,31 @@ export async function startServer(): Promise<StartedServer> {
         .catch((err) => {
           logger.error({ err }, "periodic heartbeat recovery failed");
         });
+
+      // Auto-resume agents whose _autoPause window has passed.
+      void (async () => {
+        try {
+          const pausedAgents = await db.select().from(agents).where(eq(agents.status, "paused"));
+          const now = Date.now();
+          for (const agent of pausedAgents) {
+            const ap = (agent.runtimeConfig as Record<string, unknown> | null)?._autoPause as
+              | { reason?: string; resumeAfter?: string; pausedAt?: string }
+              | undefined;
+            if (!ap?.resumeAfter) continue;
+            if (now < new Date(ap.resumeAfter).getTime()) continue;
+
+            const { _autoPause: _removed, ...restConfig } = (agent.runtimeConfig as Record<string, unknown>) ?? {};
+            if (ap.reason === "monthly_budget") {
+              await db.update(agents).set({ status: "idle", runtimeConfig: restConfig, spentMonthlyCents: 0, updatedAt: new Date() }).where(eq(agents.id, agent.id));
+            } else {
+              await db.update(agents).set({ status: "idle", runtimeConfig: restConfig, updatedAt: new Date() }).where(eq(agents.id, agent.id));
+            }
+            logger.info({ agentId: agent.id, reason: ap.reason }, "auto-resumed agent after pause window expired");
+          }
+        } catch (err) {
+          logger.error({ err }, "auto-resume agents tick failed");
+        }
+      })();
     }, config.heartbeatSchedulerIntervalMs);
   }
   

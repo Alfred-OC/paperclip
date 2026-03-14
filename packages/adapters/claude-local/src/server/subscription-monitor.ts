@@ -258,6 +258,11 @@ let cachedOrgUuid: string | null = null;
 
 async function fetchClaudeAiUsage(sessionKey: string): Promise<ApiUsageResult | null> {
   const now = Date.now();
+  // Invalidate API cache 1 min after the 5-hour window resets so billing reverts to subscription
+  if (apiCached?.result?.fiveHourResetsAt) {
+    const resetMs = new Date(apiCached.result.fiveHourResetsAt).getTime();
+    if (now > resetMs + 60_000) apiCached = null;
+  }
   if (apiCached && now - apiCached.at < API_CACHE_TTL_MS) return apiCached.result;
 
   const headers = { ...API_HEADERS, Cookie: `sessionKey=${sessionKey}` };
@@ -319,6 +324,11 @@ export function invalidateUsageCache(): void {
 
 export async function getUsageStatus(opts: MonitorOptions): Promise<UsageStatus> {
   const now = Date.now();
+  // Invalidate main cache 1 min after reset so agents revert to subscription billing
+  if (cached?.status.fiveHourResetsAt) {
+    const resetMs = new Date(cached.status.fiveHourResetsAt).getTime();
+    if (now > resetMs + 60_000) { cached = null; apiCached = null; }
+  }
   if (cached && now - cached.at < CACHE_TTL_MS) return cached.status;
 
   const since = now - WINDOW_MS;

@@ -57,9 +57,19 @@ export function costService(db: Db) {
         updatedAgent.status !== "paused" &&
         updatedAgent.status !== "terminated"
       ) {
+        const now = new Date();
+        const resumeAfter = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+        const existingConfig = (updatedAgent.runtimeConfig as Record<string, unknown>) ?? {};
         await db
           .update(agents)
-          .set({ status: "paused", updatedAt: new Date() })
+          .set({
+            status: "paused",
+            runtimeConfig: {
+              ...existingConfig,
+              _autoPause: { reason: "monthly_budget", resumeAfter, pausedAt: now.toISOString() },
+            },
+            updatedAt: now,
+          })
           .where(eq(agents.id, updatedAgent.id));
       }
 

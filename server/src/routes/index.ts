@@ -13,3 +13,4 @@ export { sidebarBadgeRoutes } from "./sidebar-badges.js";
 export { llmRoutes } from "./llms.js";
 export { accessRoutes } from "./access.js";
 export { subscriptionRoutes } from "./subscription.js";
+export { instanceStartupRoutes } from "./instance-startup.js";

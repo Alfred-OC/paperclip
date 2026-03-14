@@ -31,6 +31,24 @@ function getRecentIssues(issues: Issue[]): Issue[] {
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
+function ResetCountdown({ resetsAt }: { resetsAt: string }) {
+  const [remaining, setRemaining] = useState("");
+  useEffect(() => {
+    const tick = () => {
+      const ms = new Date(resetsAt).getTime() - Date.now();
+      if (ms <= 0) { setRemaining("now"); return; }
+      const h = Math.floor(ms / 3_600_000);
+      const m = Math.floor((ms % 3_600_000) / 60_000);
+      const s = Math.floor((ms % 60_000) / 1_000);
+      setRemaining(`${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+    };
+    tick();
+    const id = setInterval(tick, 1_000);
+    return () => clearInterval(id);
+  }, [resetsAt]);
+  return <>{remaining}</>;
+}
+
 export function Dashboard() {
   const { selectedCompanyId, companies } = useCompany();
   const { openOnboarding } = useDialog();
@@ -271,23 +289,34 @@ export function Dashboard() {
               icon={Zap}
               value={
                 subscription?.fiveHourPct !== null && subscription?.fiveHourPct !== undefined
-                  ? `${Math.round(subscription.fiveHourPct)}%`
+                  ? `${Math.round(Math.max(subscription.fiveHourPct, subscription.sevenDayPct ?? 0))}%`
                   : subscription?.usagePercent !== undefined && subscription.usagePercent >= 0
                   ? `${Math.round(subscription.usagePercent * 100)}%`
                   : "—"
               }
               label="Claude Subscription"
               description={
-                <span>
-                  {subscription?.isAboveThreshold
-                    ? "API fallback active"
-                    : subscription?.source === "none"
-                    ? "No data — run an agent"
-                    : "Subscription OK"}
-                  {subscription?.fiveHourResetsAt
-                    ? ` · resets ${new Date(subscription.fiveHourResetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                    : ""}
-                </span>
+                subscription?.fiveHourPct !== null && subscription?.fiveHourPct !== undefined ? (
+                  <span>
+                    {subscription.isAboveThreshold ? "API fallback active · " : ""}
+                    5h: {Math.round(subscription.fiveHourPct)}%
+                    {subscription.sevenDayPct !== null ? ` · 7d: ${Math.round(subscription.sevenDayPct!)}%` : ""}
+                    {subscription.fiveHourResetsAt ? (
+                      <span
+                        title={new Date(subscription.fiveHourResetsAt).toLocaleString()}
+                      >
+                        {" · resets in "}
+                        <ResetCountdown resetsAt={subscription.fiveHourResetsAt} />
+                      </span>
+                    ) : null}
+                  </span>
+                ) : (
+                  <span>
+                    {subscription?.usagePercent !== undefined && subscription.usagePercent >= 0
+                      ? `5h: ${Math.round(subscription.usagePercent * 100)}% (est)`
+                      : "No data — run an agent"}
+                  </span>
+                )
               }
             />
           </div>

@@ -5,6 +5,7 @@ import type { InstanceSchedulerHeartbeatAgent } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { heartbeatsApi } from "../api/heartbeats";
 import { agentsApi } from "../api/agents";
+import { instanceStartupApi } from "../api/instance-startup";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { EmptyState } from "../components/EmptyState";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,22 @@ export function InstanceSettings() {
       { label: "Heartbeats" },
     ]);
   }, [setBreadcrumbs]);
+
+  const startupQuery = useQuery({
+    queryKey: ["instance", "startup"],
+    queryFn: () => instanceStartupApi.status(),
+    staleTime: 30_000,
+  });
+
+  const startupMutation = useMutation({
+    mutationFn: (enabled: boolean) => instanceStartupApi.set(enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["instance", "startup"] });
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "Failed to update startup setting.");
+    },
+  });
 
   const heartbeatsQuery = useQuery({
     queryKey: queryKeys.instance.schedulerHeartbeats,
@@ -110,6 +127,36 @@ export function InstanceSettings() {
 
   return (
     <div className="max-w-5xl space-y-6">
+      {startupQuery.data?.isDarwin && (
+        <div className="space-y-3">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">System Startup</div>
+          <div className="rounded-md border border-border px-4 py-3">
+            <div className="flex items-center justify-between text-sm">
+              <div className="space-y-0.5">
+                <span className="font-medium">Launch on login</span>
+                <p className="text-xs text-muted-foreground">
+                  Registers a macOS LaunchAgent so Paperclip starts automatically when you log in.
+                </p>
+              </div>
+              <Button
+                variant={startupQuery.data.enabled ? "default" : "outline"}
+                size="sm"
+                className="h-7 px-2.5 text-xs shrink-0"
+                disabled={startupMutation.isPending}
+                onClick={() => startupMutation.mutate(!startupQuery.data!.enabled)}
+              >
+                {startupMutation.isPending ? "..." : startupQuery.data.enabled ? "Enabled" : "Disabled"}
+              </Button>
+            </div>
+            {startupQuery.data.enabled && (
+              <p className="mt-1.5 text-[11px] text-muted-foreground/70 font-mono">
+                {startupQuery.data.plistPath}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Settings className="h-5 w-5 text-muted-foreground" />
