@@ -32,6 +32,20 @@ Operational fields:
 - timeoutSec (number, optional): run timeout in seconds
 - graceSec (number, optional): SIGTERM grace period in seconds
 
+Subscription / billing fields:
+- claudePlan (string, optional: "pro" | "max5" | "max20"): Claude subscription plan used for JSONL-based token limit calculation (pro=45k, max5=88k, max20=220k tokens/5h)
+- tokenLimitPer5h (number, optional): explicit per-5h token limit; overrides claudePlan
+- subscriptionSwitchThreshold (number, optional, default 0.8): fraction (0–1) of the 5h token limit at which to switch from subscription billing to API-key billing
+
+Bitwarden Secrets Manager (BWS) fields — configure in env:
+- BWS_ACCESS_TOKEN (string, secret ref): Bitwarden Secrets Manager access token; when present, all BWS secrets are automatically injected into the agent subprocess env (existing env values take precedence)
+- BWS_PROJECT_ID (string, optional, secret ref): scopes BWS fetch to a specific project
+
+Usage monitoring env fields (configure in env):
+- ANTHROPIC_API_KEY (string, secret ref): API-key fallback; withheld from the subprocess when subscription usage is below subscriptionSwitchThreshold, injected when above it
+- CLAUDE_SESSION_KEY (string, optional, secret ref): claude.ai web session cookie for the usage monitoring API (provides exact 5h/7d utilization); if omitted the monitor reads from Safari BinaryCookies automatically or falls back to JSONL token counting
+
 Notes:
 - When Paperclip realizes a workspace/runtime for a run, it injects PAPERCLIP_WORKSPACE_* and PAPERCLIP_RUNTIME_* env vars for agent-side tooling.
+- Subscription monitoring requires claude login to have been run once so the claude CLI subprocess can use the existing macOS Keychain credentials.
 `;

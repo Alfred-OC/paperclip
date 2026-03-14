@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -27,6 +28,7 @@ import {
   isClaudeMaxTurnsResult,
   isClaudeUnknownSessionError,
 } from "./parse.js";
+import { getUsageStatus, resolveMonitorOptions, invalidateUsageCache } from "./subscription-monitor.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const PAPERCLIP_SKILLS_CANDIDATES = [
@@ -231,6 +233,75 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
 
   for (const [key, value] of Object.entries(envConfig)) {
     if (typeof value === "string") env[key] = value;
+  }
+
+  // ── BWS secret injection ──────────────────────────────────────────────
+  // If BWS_ACCESS_TOKEN is configured, fetch all secrets from Bitwarden
+  // Secrets Manager and merge them into the subprocess env. Existing env
+  // values take precedence so individual agent overrides still win.
+  const bwsToken = env["BWS_ACCESS_TOKEN"];
+  if (bwsToken) {
+    try {
+      const bwsArgs = ["secret", "list", "--output", "json"];
+      const bwsProjectId = env["BWS_PROJECT_ID"];
+      if (bwsProjectId) bwsArgs.push(bwsProjectId);
+      const bwsOutput = execFileSync("bws", bwsArgs, {
+        env: { ...process.env, BWS_ACCESS_TOKEN: bwsToken },
+        timeout: 15_000,
+        stdio: ["pipe", "pipe", "pipe"],
+      }).toString();
+      const secrets = JSON.parse(bwsOutput) as Array<{ key: string; value: string }>;
+      let injected = 0;
+      for (const { key, value } of secrets) {
+        if (typeof key === "string" && typeof value === "string" && !(key in env)) {
+          env[key] = value;
+          injected++;
+        }
+      }
+      console.info(`[bws] Injected ${injected} secrets from Bitwarden Secrets Manager`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("ENOENT") || msg.includes("not found")) {
+        console.warn("[bws] bws CLI not found — install: brew install bitwarden/brew/bws");
+      } else {
+        console.warn(`[bws] Failed to fetch secrets: ${msg}`);
+      }
+    }
+  }
+
+  // ── Subscription → API fallback ───────────────────────────────────────
+  // When ANTHROPIC_API_KEY is configured, withhold it from the subprocess
+  // env by default (subscription billing). Only inject it when subscription
+  // usage crosses the configured threshold (default 80%).
+  const anthropicApiKey = env["ANTHROPIC_API_KEY"];
+  if (anthropicApiKey) {
+    const monitorOpts = resolveMonitorOptions(config, env);
+    // Only run the monitor if a plan limit or the claude.ai API session key
+    // is available — otherwise there is nothing to compare against.
+    const canMonitor = monitorOpts.tokenLimitPer5h > 0 || monitorOpts.sessionKey !== undefined;
+    if (canMonitor) {
+      try {
+        const usageStatus = await getUsageStatus(monitorOpts);
+        if (usageStatus.isAboveThreshold) {
+          const pct = usageStatus.fiveHourPct !== null
+            ? `${usageStatus.fiveHourPct}% (API)`
+            : `${Math.round(usageStatus.usagePercent * 100)}% (JSONL)`;
+          console.info(`[subscription-monitor] Usage ${pct} >= threshold ${Math.round(monitorOpts.switchThreshold * 100)}% — switching to API billing`);
+          // Keep ANTHROPIC_API_KEY in env (already present)
+        } else {
+          const pct = usageStatus.fiveHourPct !== null
+            ? `${usageStatus.fiveHourPct}% (API)`
+            : usageStatus.usagePercent >= 0
+              ? `${Math.round(usageStatus.usagePercent * 100)}% (JSONL)`
+              : "unknown";
+          console.info(`[subscription-monitor] Usage ${pct} < threshold ${Math.round(monitorOpts.switchThreshold * 100)}% — using subscription billing`);
+          delete env["ANTHROPIC_API_KEY"];
+        }
+      } catch (err) {
+        console.warn(`[subscription-monitor] Usage check failed, keeping API key as safe fallback: ${err instanceof Error ? err.message : String(err)}`);
+        // Keep ANTHROPIC_API_KEY on error — fail safe to API billing
+      }
+    }
   }
 
   if (!hasExplicitApiKey && authToken) {
