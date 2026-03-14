@@ -5,9 +5,12 @@
 <p align="center">
   <a href="#quickstart"><strong>Quickstart</strong></a> &middot;
   <a href="https://paperclip.ing/docs"><strong>Docs</strong></a> &middot;
-  <a href="https://github.com/paperclipai/paperclip"><strong>GitHub</strong></a> &middot;
+  <a href="https://github.com/Alfred-OC/paperclip"><strong>GitHub (this fork)</strong></a> &middot;
+  <a href="https://github.com/paperclipai/paperclip"><strong>Upstream</strong></a> &middot;
   <a href="https://discord.gg/m4HZY7xNG3"><strong>Discord</strong></a>
 </p>
+
+> **Fork note:** This is a personal fork of [paperclipai/paperclip](https://github.com/paperclipai/paperclip) with the following additions to the `claude_local` adapter: subscription-aware billing (uses Claude subscription first, falls back to API key when usage crosses a threshold), and Bitwarden Secrets Manager (BWS) integration so agents automatically receive secrets like `GITHUB_TOKEN` without manual per-key configuration. See [Claude Code — Subscription & Secrets](#claude-code--subscription--secrets) below.
 
 <p align="center">
   <a href="https://github.com/paperclipai/paperclip/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
@@ -212,6 +215,53 @@ Agent orchestration has subtleties in how you coordinate who has work checked ou
 
 **Do agents run continuously?**
 By default, agents run on scheduled heartbeats and event-based triggers (task assignment, @-mentions). You can also hook in continuous agents like OpenClaw. You bring your agent and Paperclip coordinates.
+
+<br/>
+
+## Claude Code — Subscription & Secrets
+
+This fork extends the `claude_local` adapter with two features:
+
+### 1. Subscription-first billing with automatic API fallback
+
+By default, Claude Code agents use your **claude.ai subscription** (free). When your 5-hour usage window approaches the plan limit, the adapter automatically switches to your **Anthropic API key** — then switches back once usage resets. This prevents agents from hitting the subscription wall mid-task.
+
+Configure on any `claude_local` agent:
+
+```json
+{
+  "env": {
+    "ANTHROPIC_API_KEY": "{{secret:anthropic_api_key}}"
+  },
+  "claudePlan": "pro",
+  "subscriptionSwitchThreshold": 0.8
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `claudePlan` | — | `"pro"` (45k tokens/5h), `"max5"` (88k), or `"max20"` (220k) |
+| `tokenLimitPer5h` | — | Explicit token limit; overrides `claudePlan` |
+| `subscriptionSwitchThreshold` | `0.8` | Switch to API at this fraction of the limit (0–1) |
+
+Usage is measured via the **claude.ai API** (exact percentages) when a session key is available, or falls back to counting tokens in `~/.claude/projects/*.jsonl`. The session key is resolved automatically from Safari BinaryCookies — no extra configuration needed if you are logged in at claude.ai in Safari.
+
+> **First-time setup:** Run `claude login` once so the `claude` CLI has credentials in the macOS Keychain. The adapter reuses them automatically.
+
+### 2. Bitwarden Secrets Manager (BWS) injection
+
+Add `BWS_ACCESS_TOKEN` to any agent's env and all your BWS secrets (`GITHUB_TOKEN`, etc.) are injected into the agent subprocess automatically — no need to enumerate them one by one. Existing env values take precedence over BWS, so individual overrides always win.
+
+```json
+{
+  "env": {
+    "BWS_ACCESS_TOKEN": "{{secret:bws_access_token}}",
+    "BWS_PROJECT_ID":   "{{secret:bws_project_id}}"
+  }
+}
+```
+
+Install the BWS CLI once: `brew install bitwarden/brew/bws`. If the CLI is not found, a warning is logged and the run continues normally.
 
 <br/>
 

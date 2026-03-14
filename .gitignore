@@ -41,3 +41,23 @@ tmp/
 # Playwright
 tests/e2e/test-results/
 tests/e2e/playwright-report/
+
+# Secrets & credentials — never commit these
+.env.local
+.env.*.local
+.env.production
+.env.staging
+*.pem
+*.p12
+*.p8
+*.key
+secrets/
+**/secrets/
+*.secret
+*.credentials
+.credentials
+
+# Local config overrides
+config.local.*
+*.local.json
+!.claude/settings.local.json
