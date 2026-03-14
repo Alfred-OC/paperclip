@@ -102,6 +102,8 @@ export const agentsApi = {
     api.patch<Agent>(agentPath(id, companyId), data),
   updatePermissions: (id: string, data: { canCreateAgents: boolean }, companyId?: string) =>
     api.patch<Agent>(agentPath(id, companyId, "/permissions"), data),
+  updateBudget: (id: string, budgetMonthlyCents: number) =>
+    api.patch<Agent>(`/agents/${encodeURIComponent(id)}/budgets`, { budgetMonthlyCents }),
   pause: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/pause"), {}),
   resume: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/resume"), {}),
   terminate: (id: string, companyId?: string) => api.post<Agent>(agentPath(id, companyId, "/terminate"), {}),

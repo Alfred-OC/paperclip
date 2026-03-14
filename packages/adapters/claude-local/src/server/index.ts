@@ -1,5 +1,7 @@
 export { execute, runClaudeLogin } from "./execute.js";
 export { testEnvironment } from "./test.js";
+export { getUsageStatus, resolveMonitorOptions, invalidateUsageCache } from "./subscription-monitor.js";
+export type { MonitorOptions, UsageStatus, TokenUsage } from "./subscription-monitor.js";
 export {
   parseClaudeStreamJson,
   describeClaudeFailure,

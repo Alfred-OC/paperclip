@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { dashboardApi } from "../api/dashboard";
+import { subscriptionApi } from "../api/subscription";
 import { activityApi } from "../api/activity";
 import { issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
@@ -19,7 +20,7 @@ import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
 import { cn, formatCents } from "../lib/utils";
-import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard } from "lucide-react";
+import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, Zap } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -76,6 +77,13 @@ export function Dashboard() {
   const { data: runs } = useQuery({
     queryKey: queryKeys.heartbeats(selectedCompanyId!),
     queryFn: () => heartbeatsApi.list(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+  });
+
+  const { data: subscription } = useQuery({
+    queryKey: ["subscription", "status"],
+    queryFn: () => subscriptionApi.status(),
+    staleTime: 2 * 60 * 1000,
     enabled: !!selectedCompanyId,
   });
 
@@ -209,7 +217,7 @@ export function Dashboard() {
 
       {data && (
         <>
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-1 sm:gap-2">
+          <div className="grid grid-cols-2 xl:grid-cols-5 gap-1 sm:gap-2">
             <MetricCard
               icon={Bot}
               value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
@@ -256,6 +264,29 @@ export function Dashboard() {
               description={
                 <span>
                   Awaiting board review
+                </span>
+              }
+            />
+            <MetricCard
+              icon={Zap}
+              value={
+                subscription?.fiveHourPct !== null && subscription?.fiveHourPct !== undefined
+                  ? `${Math.round(subscription.fiveHourPct)}%`
+                  : subscription?.usagePercent !== undefined && subscription.usagePercent >= 0
+                  ? `${Math.round(subscription.usagePercent * 100)}%`
+                  : "—"
+              }
+              label="Claude Subscription"
+              description={
+                <span>
+                  {subscription?.isAboveThreshold
+                    ? "API fallback active"
+                    : subscription?.source === "none"
+                    ? "No data — run an agent"
+                    : "Subscription OK"}
+                  {subscription?.fiveHourResetsAt
+                    ? ` · resets ${new Date(subscription.fiveHourResetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                    : ""}
                 </span>
               }
             />

@@ -34,6 +34,7 @@ export function CompanySettings() {
   const [companyName, setCompanyName] = useState("");
   const [description, setDescription] = useState("");
   const [brandColor, setBrandColor] = useState("");
+  const [budgetInput, setBudgetInput] = useState("");
 
   // Sync local state from selected company
   useEffect(() => {
@@ -41,6 +42,11 @@ export function CompanySettings() {
     setCompanyName(selectedCompany.name);
     setDescription(selectedCompany.description ?? "");
     setBrandColor(selectedCompany.brandColor ?? "");
+    setBudgetInput(
+      selectedCompany.budgetMonthlyCents && selectedCompany.budgetMonthlyCents > 0
+        ? String(selectedCompany.budgetMonthlyCents / 100)
+        : ""
+    );
   }, [selectedCompany]);
 
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -48,17 +54,23 @@ export function CompanySettings() {
   const [snippetCopied, setSnippetCopied] = useState(false);
   const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
 
+  const budgetCents = budgetInput.trim()
+    ? Math.round(parseFloat(budgetInput) * 100)
+    : 0;
+
   const generalDirty =
     !!selectedCompany &&
     (companyName !== selectedCompany.name ||
       description !== (selectedCompany.description ?? "") ||
-      brandColor !== (selectedCompany.brandColor ?? ""));
+      brandColor !== (selectedCompany.brandColor ?? "") ||
+      budgetCents !== (selectedCompany.budgetMonthlyCents ?? 0));
 
   const generalMutation = useMutation({
     mutationFn: (data: {
       name: string;
       description: string | null;
       brandColor: string | null;
+      budgetMonthlyCents: number;
     }) => companiesApi.update(selectedCompanyId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
@@ -174,7 +186,8 @@ export function CompanySettings() {
     generalMutation.mutate({
       name: companyName.trim(),
       description: description.trim() || null,
-      brandColor: brandColor || null
+      brandColor: brandColor || null,
+      budgetMonthlyCents: budgetCents,
     });
   }
 
@@ -210,6 +223,23 @@ export function CompanySettings() {
               placeholder="Optional company description"
               onChange={(e) => setDescription(e.target.value)}
             />
+          </Field>
+          <Field
+            label="Monthly budget (USD)"
+            hint="Monthly API spend limit in USD. Leave blank for unlimited."
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-muted-foreground">$</span>
+              <input
+                className="w-32 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                type="number"
+                min="0"
+                step="1"
+                value={budgetInput}
+                placeholder="Unlimited"
+                onChange={(e) => setBudgetInput(e.target.value)}
+              />
+            </div>
           </Field>
         </div>
       </div>

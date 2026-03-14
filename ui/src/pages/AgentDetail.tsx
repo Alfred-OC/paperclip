@@ -939,6 +939,23 @@ function AgentConfigurePage({
 }) {
   const queryClient = useQueryClient();
   const [revisionsOpen, setRevisionsOpen] = useState(false);
+  const [budgetInput, setBudgetInput] = useState(
+    agent.budgetMonthlyCents && agent.budgetMonthlyCents > 0
+      ? String(agent.budgetMonthlyCents / 100)
+      : ""
+  );
+
+  const updateBudget = useMutation({
+    mutationFn: (budgetMonthlyCents: number) =>
+      agentsApi.updateBudget(agent.id, budgetMonthlyCents),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agent.urlKey) });
+    },
+  });
+
+  const budgetCents = budgetInput.trim() ? Math.round(parseFloat(budgetInput) * 100) : 0;
+  const budgetDirty = budgetCents !== (agent.budgetMonthlyCents ?? 0);
 
   const { data: configRevisions } = useQuery({
     queryKey: queryKeys.agents.configRevisions(agent.id),
@@ -968,6 +985,50 @@ function AgentConfigurePage({
       <div>
         <h3 className="text-sm font-medium mb-3">API Keys</h3>
         <KeysTab agentId={agentId} companyId={companyId} />
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium mb-3">Budget</h3>
+        <div className="border border-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-muted-foreground">$</span>
+              <input
+                className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+                type="number"
+                min="0"
+                step="1"
+                value={budgetInput}
+                placeholder="Unlimited"
+                onChange={(e) => setBudgetInput(e.target.value)}
+              />
+              <span className="text-sm text-muted-foreground">/month</span>
+            </div>
+            {budgetDirty && (
+              <Button
+                size="sm"
+                onClick={() => updateBudget.mutate(budgetCents)}
+                disabled={updateBudget.isPending}
+              >
+                {updateBudget.isPending ? "Saving..." : "Save"}
+              </Button>
+            )}
+            {updateBudget.isSuccess && !budgetDirty && (
+              <span className="text-xs text-muted-foreground">Saved</span>
+            )}
+          </div>
+          {agent.spentMonthlyCents !== undefined && agent.spentMonthlyCents > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {formatCents(agent.spentMonthlyCents)} spent this month
+              {agent.budgetMonthlyCents && agent.budgetMonthlyCents > 0
+                ? ` of ${formatCents(agent.budgetMonthlyCents)} budget`
+                : ""}
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Monthly API spend limit. Leave blank for unlimited. Agent pauses when limit is reached.
+          </p>
+        </div>
       </div>
 
       {/* Configuration Revisions — collapsible at the bottom */}
