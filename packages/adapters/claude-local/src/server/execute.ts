@@ -273,34 +273,48 @@ async function buildClaudeRuntimeConfig(input: ClaudeExecutionInput): Promise<Cl
   // When ANTHROPIC_API_KEY is configured, withhold it from the subprocess
   // env by default (subscription billing). Only inject it when subscription
   // usage crosses the configured threshold (default 80%).
+  // billingMode overrides: "subscription_only" = always remove key;
+  //                        "api_only"           = always keep key;
+  //                        "hybrid" (default)   = threshold-based (existing logic).
   const anthropicApiKey = env["ANTHROPIC_API_KEY"];
   if (anthropicApiKey) {
-    const monitorOpts = resolveMonitorOptions(config, env);
-    // Only run the monitor if a plan limit or the claude.ai API session key
-    // is available — otherwise there is nothing to compare against.
-    const canMonitor = monitorOpts.tokenLimitPer5h > 0 || monitorOpts.sessionKey !== undefined;
-    if (canMonitor) {
-      try {
-        const usageStatus = await getUsageStatus(monitorOpts);
-        if (usageStatus.isAboveThreshold) {
-          const pct = usageStatus.fiveHourPct !== null
-            ? `${usageStatus.fiveHourPct}% (API)`
-            : `${Math.round(usageStatus.usagePercent * 100)}% (JSONL)`;
-          console.info(`[subscription-monitor] Usage ${pct} >= threshold ${Math.round(monitorOpts.switchThreshold * 100)}% — switching to API billing`);
-          // Keep ANTHROPIC_API_KEY in env (already present)
-        } else {
-          const pct = usageStatus.fiveHourPct !== null
-            ? `${usageStatus.fiveHourPct}% (API)`
-            : usageStatus.usagePercent >= 0
-              ? `${Math.round(usageStatus.usagePercent * 100)}% (JSONL)`
-              : "unknown";
-          console.info(`[subscription-monitor] Usage ${pct} < threshold ${Math.round(monitorOpts.switchThreshold * 100)}% — using subscription billing`);
-          delete env["ANTHROPIC_API_KEY"];
+    const billingMode = typeof config.billingMode === "string" ? config.billingMode : "hybrid";
+    if (billingMode === "subscription_only") {
+      delete env["ANTHROPIC_API_KEY"];
+      console.info("[subscription-monitor] billing-mode=subscription_only — always using subscription billing");
+    } else if (billingMode !== "api_only") {
+      // hybrid (default): threshold-based switching
+      const monitorOpts = resolveMonitorOptions(config, env);
+      // Only run the monitor if a plan limit or the claude.ai API session key
+      // is available — otherwise there is nothing to compare against.
+      const canMonitor = monitorOpts.tokenLimitPer5h > 0 || monitorOpts.sessionKey !== undefined;
+      if (canMonitor) {
+        try {
+          const usageStatus = await getUsageStatus(monitorOpts);
+          if (usageStatus.isAboveThreshold) {
+            const pct = usageStatus.fiveHourPct !== null
+              ? `${usageStatus.fiveHourPct}% (API)`
+              : `${Math.round(usageStatus.usagePercent * 100)}% (JSONL)`;
+            console.info(`[subscription-monitor] Usage ${pct} >= threshold ${Math.round(monitorOpts.switchThreshold * 100)}% — switching to API billing`);
+            // Keep ANTHROPIC_API_KEY in env (already present)
+          } else {
+            const pct = usageStatus.fiveHourPct !== null
+              ? `${usageStatus.fiveHourPct}% (API)`
+              : usageStatus.usagePercent >= 0
+                ? `${Math.round(usageStatus.usagePercent * 100)}% (JSONL)`
+                : "unknown";
+            console.info(`[subscription-monitor] Usage ${pct} < threshold ${Math.round(monitorOpts.switchThreshold * 100)}% — using subscription billing`);
+            delete env["ANTHROPIC_API_KEY"];
+          }
+        } catch (err) {
+          console.warn(`[subscription-monitor] Usage check failed, keeping API key as safe fallback: ${err instanceof Error ? err.message : String(err)}`);
+          // Keep ANTHROPIC_API_KEY on error — fail safe to API billing
         }
-      } catch (err) {
-        console.warn(`[subscription-monitor] Usage check failed, keeping API key as safe fallback: ${err instanceof Error ? err.message : String(err)}`);
-        // Keep ANTHROPIC_API_KEY on error — fail safe to API billing
       }
+    }
+    // api_only: keep ANTHROPIC_API_KEY in env unchanged (no-op)
+    if (billingMode === "api_only") {
+      console.info("[subscription-monitor] billing-mode=api_only — always using API key billing");
     }
   }
 

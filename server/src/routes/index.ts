@@ -14,3 +14,4 @@ export { llmRoutes } from "./llms.js";
 export { accessRoutes } from "./access.js";
 export { subscriptionRoutes } from "./subscription.js";
 export { instanceStartupRoutes } from "./instance-startup.js";
+export { instanceBillingRoutes } from "./instance-billing.js";

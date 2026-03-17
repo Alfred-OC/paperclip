@@ -26,6 +26,7 @@ import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { subscriptionRoutes } from "./routes/subscription.js";
 import { instanceStartupRoutes } from "./routes/instance-startup.js";
+import { instanceBillingRoutes } from "./routes/instance-billing.js";
 import { applyUiBranding } from "./ui-branding.js";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
@@ -118,6 +119,7 @@ export async function createApp(
   api.use(sidebarBadgeRoutes(db));
   api.use(subscriptionRoutes(db));
   api.use(instanceStartupRoutes(db));
+  api.use(instanceBillingRoutes(db));
   api.use(
     accessRoutes(db, {
       deploymentMode: opts.deploymentMode,

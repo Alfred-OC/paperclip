@@ -6,6 +6,7 @@ import { Link } from "@/lib/router";
 import { heartbeatsApi } from "../api/heartbeats";
 import { agentsApi } from "../api/agents";
 import { instanceStartupApi } from "../api/instance-startup";
+import { instanceBillingApi, type BillingMode } from "../api/instance-billing";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { EmptyState } from "../components/EmptyState";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,22 @@ export function InstanceSettings() {
     },
     onError: (error) => {
       setActionError(error instanceof Error ? error.message : "Failed to update startup setting.");
+    },
+  });
+
+  const billingQuery = useQuery({
+    queryKey: ["instance", "billing-mode"],
+    queryFn: () => instanceBillingApi.getMode(),
+    staleTime: 60_000,
+  });
+
+  const billingMutation = useMutation({
+    mutationFn: (mode: BillingMode) => instanceBillingApi.setMode(mode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["instance", "billing-mode"] });
+    },
+    onError: (error) => {
+      setActionError(error instanceof Error ? error.message : "Failed to update billing mode.");
     },
   });
 
@@ -156,6 +173,51 @@ export function InstanceSettings() {
           </div>
         </div>
       )}
+
+      <div className="space-y-3">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Billing Mode</div>
+        <div className="rounded-md border border-border px-4 py-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Controls how agents choose between Claude subscription and API key billing.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                { value: "subscription_only", label: "Subscription only", desc: "Always use Claude subscription. API key is never injected." },
+                { value: "hybrid", label: "Hybrid (default)", desc: "Use subscription; fall back to API key when usage exceeds threshold." },
+                { value: "api_only", label: "API key only", desc: "Always use API key. Requires ANTHROPIC_API_KEY to be configured." },
+              ] as { value: BillingMode; label: string; desc: string }[]
+            ).map(({ value, label, desc }) => {
+              const active = (billingQuery.data?.mode ?? "hybrid") === value;
+              return (
+                <button
+                  key={value}
+                  title={desc}
+                  disabled={billingMutation.isPending}
+                  onClick={() => billingMutation.mutate(value)}
+                  className={[
+                    "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-transparent text-muted-foreground hover:border-primary/60 hover:text-foreground",
+                  ].join(" ")}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {billingQuery.data && (
+            <p className="text-[11px] text-muted-foreground/70">
+              {{
+                subscription_only: "API key is always withheld — agents always bill to subscription.",
+                hybrid: "Switches to API key when subscription usage exceeds the configured threshold.",
+                api_only: "API key is always injected — subscription monitor is skipped.",
+              }[billingQuery.data.mode]}
+            </p>
+          )}
+        </div>
+      </div>
 
       <div className="space-y-2">
         <div className="flex items-center gap-2">
